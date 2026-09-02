@@ -32,25 +32,43 @@ const pokemonBase = [
   { id: 102, name: 'Exeggcute', type: 'grass', hp: 60, atk: 40, def: 80, spa: 60, spd: 85, spe: 40, catchRate: 190, color: '#A8B820' }
 ];
 
-// Use PokeAPI sprites via jsDelivr (numeric path works reliably)
+// Use PokeAPI raw.githubusercontent links to avoid jsDelivr package limit
 const spriteUrls = {
-  1:   'https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/1.png',
-  4:   'https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/4.png',
-  7:   'https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/7.png',
-  25:  'https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/25.png',
-  58:  'https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/58.png',
-  63:  'https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/63.png',
-  69:  'https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/69.png',
-  133: 'https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/133.png',
-  95:  'https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/95.png',
-  102: 'https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/102.png'
+  1:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1.png',
+  4:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/4.png',
+  7:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/7.png',
+  25:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png',
+  58:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/58.png',
+  63:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/63.png',
+  69:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/69.png',
+  133: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/133.png',
+  95:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/95.png',
+  102: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/102.png'
 };
 
 const spriteCache = {};
 
-// Load sprite with fallback: try Image tag (with CORS), if that errors try fetch->blob, and finally generate inline SVG placeholder.
+// Helper: fetch a URL and return a loaded Image using an object URL (same-origin drawable)
+async function fetchImageAsObject(url) {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('Fetch status ' + resp.status);
+    const blob = await resp.blob();
+    const objUrl = URL.createObjectURL(blob);
+    return await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(objUrl); resolve(img); };
+      img.onerror = (e) => { URL.revokeObjectURL(objUrl); reject(e); };
+      img.src = objUrl;
+    });
+  } catch (e) {
+    console.warn('fetchImageAsObject failed for', url, e);
+    return null;
+  }
+}
+
+// Load sprite with fallback: try Image tag (with CORS), if that errors try fetch->objectURL, and finally generate inline SVG placeholder.
 async function tryLoadSprite(url) {
-  // Attempt via Image first (set crossOrigin to allow canvas drawing)
   try {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -61,21 +79,9 @@ async function tryLoadSprite(url) {
         if (finished) return resolve(null);
         console.warn('Image tag load failed, attempting fetch fallback for', url);
         // Fallback: fetch the file and create object URL (this is same-origin blob and should be drawable)
-        try {
-          const resp = await fetch(url);
-          if (!resp.ok) throw new Error('Fetch status ' + resp.status);
-          const blob = await resp.blob();
-          const objUrl = URL.createObjectURL(blob);
-          const img2 = new Image();
-          // object URLs are same-origin so crossOrigin not required, but set for consistency
-          img2.crossOrigin = 'anonymous';
-          img2.onload = () => { URL.revokeObjectURL(objUrl); resolve(img2); };
-          img2.onerror = (ev) => { URL.revokeObjectURL(objUrl); console.warn('object URL image error', ev, url); resolve(null); };
-          img2.src = objUrl;
-        } catch (e) {
-          console.warn('Fetch fallback failed for', url, e);
-          resolve(null);
-        }
+        const fetched = await fetchImageAsObject(url);
+        if (fetched) return resolve(fetched);
+        resolve(null);
       };
       img.src = url;
     });
@@ -98,33 +104,43 @@ function createPlaceholderImage(id) {
 
 function loadSpriteImage(id) {
   if (!spriteUrls[id]) {
-    // If no external URL, create inline placeholder immediately
     const ph = createPlaceholderImage(id);
     spriteCache[id] = ph;
     return ph;
   }
   if (spriteCache[id]) return spriteCache[id] === 'loading' ? null : spriteCache[id];
 
-  // mark loading
   spriteCache[id] = 'loading';
-  tryLoadSprite(spriteUrls[id]).then((img) => {
-    if (img && img.naturalWidth) {
+  // First try the normal loader which will attempt Image -> fetch->objectURL
+  tryLoadSprite(spriteUrls[id]).then(async (img) => {
+    if (img && (img.naturalWidth || img.width)) {
       spriteCache[id] = img;
       console.log('Sprite loaded', id, spriteUrls[id]);
     } else {
-      console.warn('Sprite failed to load:', id, spriteUrls[id], '- using inline placeholder');
-      const ph = createPlaceholderImage(id);
-      spriteCache[id] = ph;
+      // As a last resort, explicitly fetch and create object URL
+      console.warn('Sprite failed initial load, trying explicit fetch fallback for', id, spriteUrls[id]);
+      const fetched = await fetchImageAsObject(spriteUrls[id]);
+      if (fetched && (fetched.naturalWidth || fetched.width)) {
+        spriteCache[id] = fetched;
+        console.log('Fetched sprite as object URL', id);
+      } else {
+        console.warn('Sprite failed to load (all fallbacks):', id, spriteUrls[id], '- using inline placeholder');
+        const ph = createPlaceholderImage(id);
+        spriteCache[id] = ph;
+      }
     }
-    // redraw current view
     try {
       if (gameState && gameState.gameMode === 'battle') drawBattle();
       else drawExploration();
     } catch (e) { /* ignore */ }
-  }).catch((e) => {
-    console.warn('tryLoadSprite promise rejected for', spriteUrls[id], e);
-    const ph = createPlaceholderImage(id);
-    spriteCache[id] = ph;
+  }).catch(async (e) => {
+    console.warn('tryLoadSprite promise rejected for', spriteUrls[id], e, '- attempting explicit fetch fallback');
+    const fetched = await fetchImageAsObject(spriteUrls[id]);
+    if (fetched && (fetched.naturalWidth || fetched.width)) {
+      spriteCache[id] = fetched;
+    } else {
+      spriteCache[id] = createPlaceholderImage(id);
+    }
     try { if (gameState && gameState.gameMode === 'battle') drawBattle(); else drawExploration(); } catch (e) {}
   });
   return null;
@@ -403,7 +419,6 @@ function drawBattle() {
   ctx.fillStyle = '#FF0000'; ctx.fillRect(20, 50, 80, 8); ctx.fillStyle = '#00AA00'; const enemyHpPercent = Math.max(0, enemy.currentHp / enemy.maxHp); ctx.fillRect(20, 50, 80 * enemyHpPercent, 8);
 
   // Player
-  ctx.fillStyle = '#D4C9A8'; ctx.fillRect(20, 170, 120, 100); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(20, 170, 120, 100);
   const playerSprite = spriteCache[player.id];
   if (playerSprite && playerSprite instanceof HTMLImageElement && playerSprite.complete && playerSprite.naturalWidth) {
     try { ctx.drawImage(playerSprite, 40, 185, 80, 80); } catch (e) { console.warn('drawImage player error', e, player.id, spriteUrls[player.id]); ctx.fillStyle = player.color; ctx.fillRect(60, 205, 60, 60); }
@@ -452,11 +467,11 @@ function enemyAttack() {
 
 function useItemInBattle() {
   if (gameState.items.potion <= 0) { showError('No Potions!'); return; }
-  const heal = 20; battleState.playerPokemon.currentHp = Math.min(battleState.playerPokemon.maxHp, battleState.playerPokemon.currentHp + heal); gameState.items.potion--; battleState.battleLog.push(battleState.playerPokemon.name + ' used Potion!'); battleState.playerTurn = false; setTimeout(() => enemyAttack(), 600); drawBattle();
+  const heal = 20; battleState.playerPokemon.currentHp = Math.min(battleState.playerPokemon.maxHp, battleState.playerPokemon.currentHp + heal); gameState.items.potion--; battleState.battleLog.pus[...]
 }
 
 function runAway() {
-  const escape = Math.random() > 0.3; if (escape) { battleState.battleLog.push('Got away safely!'); showError('Escaped from battle!'); endBattle(false); } else { battleState.battleLog.push('Escape failed!'); battleState.playerTurn = false; setTimeout(() => enemyAttack(), 600); } drawBattle();
+  const escape = Math.random() > 0.3; if (escape) { battleState.battleLog.push('Got away safely!'); showError('Escaped from battle!'); endBattle(false); } else { battleState.battleLog.push('Escap[...]
 }
 
 function endBattle(won) {
@@ -467,7 +482,8 @@ function endBattle(won) {
 
 function openMainMenu() { gameState.menuOpen = !gameState.menuOpen; if (gameState.menuOpen) { const menu = `\n=== MAIN MENU ===\n\n[SELECT] - Items\n[X] - Team\n[START] - Menu\n\nA - Battle\nB - Back\n`; showError(menu); } }
 
-function showItems() { let itemsText = '=== ITEMS ===\n\n'; itemsText += `Pokéballs: ${gameState.items.pokeball}\n`; itemsText += `Great Balls: ${gameState.items.greatball}\n`; itemsText += `Ultra Balls: ${gameState.items.ultraball}\n`; itemsText += `Potions: ${gameState.items.potion}\n`; itemsText += `Super Potions: ${gameState.items.superpotion}\n\n`; itemsText += `Money: $${gameState.money}`; alert(itemsText); }
+function showItems() { let itemsText = '=== ITEMS ===\n\n'; itemsText += `Pokéballs: ${gameState.items.pokeball}\n`; itemsText += `Great Balls: ${gameState.items.greatball}\n`; itemsText += `Ult[...]
+}
 
 function showTeam() { let teamText = '=== YOUR TEAM ===\n\n'; if (gameState.team.length === 0) { teamText = 'No Pokémon!'; } else { gameState.team.forEach((pok, i) => { teamText += `${i + 1}. ${pok.name}\n`; teamText += `   Lv.${pok.level} [${pok.type.toUpperCase()}]\n`; teamText += `   HP: ${pok.currentHp}/${pok.maxHp}\n\n`; }); } alert(teamText); }
 
