@@ -67,9 +67,14 @@ async function fetchImageAsObject(url) {
   }
 }
 
-// Load sprite with fallback: try Image tag (with CORS), if that errors try fetch->objectURL, and finally generate inline SVG placeholder.
+// Load sprite with fallback: try fetch->objectURL first (more reliable for CORS), then try Image tag, then placeholder.
 async function tryLoadSprite(url) {
   try {
+    // First attempt: fetch the resource and load via object URL (ensures drawable image even if remote server doesn't set CORS for image draws)
+    const fetched = await fetchImageAsObject(url);
+    if (fetched && (fetched.naturalWidth || fetched.width)) return fetched;
+
+    // Fallback: try loading via Image with crossOrigin
     const img = new Image();
     img.crossOrigin = 'anonymous';
     return await new Promise((resolve) => {
@@ -78,9 +83,8 @@ async function tryLoadSprite(url) {
       img.onerror = async () => {
         if (finished) return resolve(null);
         console.warn('Image tag load failed, attempting fetch fallback for', url);
-        // Fallback: fetch the file and create object URL (this is same-origin blob and should be drawable)
-        const fetched = await fetchImageAsObject(url);
-        if (fetched) return resolve(fetched);
+        const fetched2 = await fetchImageAsObject(url);
+        if (fetched2) return resolve(fetched2);
         resolve(null);
       };
       img.src = url;
@@ -111,23 +115,15 @@ function loadSpriteImage(id) {
   if (spriteCache[id]) return spriteCache[id] === 'loading' ? null : spriteCache[id];
 
   spriteCache[id] = 'loading';
-  // First try the normal loader which will attempt Image -> fetch->objectURL
+  // Use the more reliable loader (fetch->objectURL preferred)
   tryLoadSprite(spriteUrls[id]).then(async (img) => {
     if (img && (img.naturalWidth || img.width)) {
       spriteCache[id] = img;
       console.log('Sprite loaded', id, spriteUrls[id]);
     } else {
-      // As a last resort, explicitly fetch and create object URL
-      console.warn('Sprite failed initial load, trying explicit fetch fallback for', id, spriteUrls[id]);
-      const fetched = await fetchImageAsObject(spriteUrls[id]);
-      if (fetched && (fetched.naturalWidth || fetched.width)) {
-        spriteCache[id] = fetched;
-        console.log('Fetched sprite as object URL', id);
-      } else {
-        console.warn('Sprite failed to load (all fallbacks):', id, spriteUrls[id], '- using inline placeholder');
-        const ph = createPlaceholderImage(id);
-        spriteCache[id] = ph;
-      }
+      console.warn('Sprite failed to load (all fallbacks):', id, spriteUrls[id], '- using inline placeholder');
+      const ph = createPlaceholderImage(id);
+      spriteCache[id] = ph;
     }
     try {
       if (gameState && gameState.gameMode === 'battle') drawBattle();
@@ -428,7 +424,7 @@ function drawBattle() {
   ctx.fillStyle = '#000'; ctx.font = 'bold 14px monospace'; ctx.fillText(player.name.toUpperCase(), 160, 192);
   ctx.font = '12px monospace'; ctx.fillText('Lv' + player.level, 270, 192);
   ctx.font = '12px monospace'; ctx.fillText('HP', 160, 210);
-  ctx.fillStyle = '#FF0000'; ctx.fillRect(190, 200, 110, 10); ctx.fillStyle = '#00AA00'; const playerHpPercent = Math.max(0, player.currentHp / player.maxHp); ctx.fillRect(190, 200, 110 * playerHpPercent, 10); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(190, 200, 110, 10);
+  ctx.fillStyle = '#FF0000'; ctx.fillRect(190, 200, 110, 10); ctx.fillStyle = '#00AA00'; const playerHpPercent = Math.max(0, player.currentHp / player.maxHp); ctx.fillRect(190, 200, 110 * playerHpPercent, 10);
   ctx.font = '10px monospace'; ctx.fillStyle = '#000'; ctx.fillText(player.currentHp + '/' + player.maxHp, 160, 240);
 
   ctx.fillStyle = '#6B8FBF'; ctx.fillRect(190, 245, 110, 8); ctx.fillStyle = '#FFD60A'; ctx.fillRect(190, 245, 110 * 0.5, 8); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(190, 245, 110, 8);
@@ -467,11 +463,11 @@ function enemyAttack() {
 
 function useItemInBattle() {
   if (gameState.items.potion <= 0) { showError('No Potions!'); return; }
-  const heal = 20; battleState.playerPokemon.currentHp = Math.min(battleState.playerPokemon.maxHp, battleState.playerPokemon.currentHp + heal); gameState.items.potion--; battleState.battleLog.pus[...]
+  const heal = 20; battleState.playerPokemon.currentHp = Math.min(battleState.playerPokemon.maxHp, battleState.playerPokemon.currentHp + heal); gameState.items.potion--; battleState.battleLog.push('Used Potion!'); drawBattle();
 }
 
 function runAway() {
-  const escape = Math.random() > 0.3; if (escape) { battleState.battleLog.push('Got away safely!'); showError('Escaped from battle!'); endBattle(false); } else { battleState.battleLog.push('Escap[...]
+  const escape = Math.random() > 0.3; if (escape) { battleState.battleLog.push('Got away safely!'); showError('Escaped from battle!'); endBattle(false); } else { battleState.battleLog.push('Escape failed!'); drawBattle(); }
 }
 
 function endBattle(won) {
@@ -480,11 +476,23 @@ function endBattle(won) {
   updateUI(); startExploration();
 }
 
-function openMainMenu() { gameState.menuOpen = !gameState.menuOpen; if (gameState.menuOpen) { const menu = `\n=== MAIN MENU ===\n\n[SELECT] - Items\n[X] - Team\n[START] - Menu\n\nA - Battle\nB - Back\n`; showError(menu); } }
+function openMainMenu() { gameState.menuOpen = !gameState.menuOpen; if (gameState.menuOpen) { const menu = `\n=== MAIN MENU ===\n\n[SELECT] - Items\n[X] - Team\n[START] - Menu\n\nA - Battle\nB - Back\n` ; console.log(menu); } }
 
-function showItems() { let itemsText = '=== ITEMS ===\n\n'; itemsText += `Pokéballs: ${gameState.items.pokeball}\n`; itemsText += `Great Balls: ${gameState.items.greatball}\n`; itemsText += `Ult[...]
+function showItems() { let itemsText = '=== ITEMS ===\n\n'; itemsText += `Pokéballs: ${gameState.items.pokeball}\n`; itemsText += `Great Balls: ${gameState.items.greatball}\n`; itemsText += `Ultraballs: ${gameState.items.ultraball}\n`; itemsText += `Potions: ${gameState.items.potion}\n`; alert(itemsText); }
+
+function showTeam() { let teamText = '=== YOUR TEAM ===\n\n'; if (gameState.team.length === 0) { teamText = 'No Pokémon!'; } else { gameState.team.forEach((pok, i) => { teamText += `${i + 1}. ${pok.name} Lv${pok.level} HP:${pok.currentHp}/${pok.maxHp}\n`; }); } alert(teamText); }
+
+// Minimal fallback handlers so clicks won't throw if not implemented yet
+function handleButtonA() { if (gameState.gameMode === 'explore') startRandomBattle(); else if (gameState.gameMode === 'battle') playerAttack(); }
+function handleButtonB() { if (gameState.gameMode === 'battle') runAway(); }
+function handleButtonX() { if (gameState.gameMode === 'explore') showTeam(); }
+function handleButtonY() { if (gameState.gameMode === 'battle') useItemInBattle(); }
+function handleKeyPress(e) {
+  if (e.code === 'KeyA') handleButtonA();
+  if (e.code === 'KeyB') handleButtonB();
+  if (e.code === 'KeyX') handleButtonX();
+  if (e.code === 'KeyY') handleButtonY();
+  if (e.code === 'Enter') openMainMenu();
 }
-
-function showTeam() { let teamText = '=== YOUR TEAM ===\n\n'; if (gameState.team.length === 0) { teamText = 'No Pokémon!'; } else { gameState.team.forEach((pok, i) => { teamText += `${i + 1}. ${pok.name}\n`; teamText += `   Lv.${pok.level} [${pok.type.toUpperCase()}]\n`; teamText += `   HP: ${pok.currentHp}/${pok.maxHp}\n\n`; }); } alert(teamText); }
 
 setupAuth();
