@@ -1,4 +1,4 @@
-// Pokémon-style game: use PNG sprites with client-side SVG->PNG fallback
+// Pokémon-style game: use high-quality official artwork PNGs with robust fallback
 
 const TYPES = {
   fire: { weak: ['water', 'rock', 'ground'], strong: ['grass', 'bug', 'ice', 'steel'], color: '#FF6B35' },
@@ -32,26 +32,26 @@ const pokemonBase = [
   { id: 102, name: 'Exeggcute', type: 'grass', hp: 60, atk: 40, def: 80, spa: 60, spd: 85, spe: 40, catchRate: 190, color: '#A8B820' }
 ];
 
-// Primary sprite URLs: PokeAPI raw GitHub PNGs
+// Use higher-resolution official artwork from the PokeAPI sprites repo
 const spriteUrls = {
-  1:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1.png',
-  4:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/4.png',
-  7:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/7.png',
-  25:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png',
-  58:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/58.png',
-  63:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/63.png',
-  69:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/69.png',
-  133: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/133.png',
-  95:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/95.png',
-  102: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/102.png'
+  1:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/1.png',
+  4:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/4.png',
+  7:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/7.png',
+  25:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png',
+  58:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/58.png',
+  63:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/63.png',
+  69:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/69.png',
+  133: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/133.png',
+  95:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/95.png',
+  102: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/102.png'
 };
 
-// Fallback SVG templates (used to create PNGs client-side if remote fetch fails)
+// Fallback SVG templates (used if fetching PNGs fails)
 const svgFallbacks = (function() {
   const map = {};
   pokemonBase.forEach(p => {
     const name = (p.name || ('#' + p.id)).substring(0, 12);
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='80' height='80' fill='${p.color || '#777'}'/><text x='40' y='45' font-size='10' fill='white' text-anchor='middle' font-family='monospace'>${name}</text></svg>`;
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='${p.color || '#777'}'/><text x='100' y='110' font-size='18' fill='white' text-anchor='middle' font-family='monospace'>${name}</text></svg>`;
     map[p.id] = svg;
   });
   return map;
@@ -77,23 +77,15 @@ async function fetchImageAsObject(url) {
   }
 }
 
-// Convert an SVG string to a PNG Image object client-side
-async function svgToPngImage(svgString) {
+async function svgToPngImage(svgString, size = 200) {
   try {
     const img = new Image();
     const svgDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
-    // Load SVG into image
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-      img.src = svgDataUrl;
-    });
-    // Draw onto offscreen canvas and export as PNG blob
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = svgDataUrl; });
     const canvasOff = document.createElement('canvas');
-    canvasOff.width = img.width || 80;
-    canvasOff.height = img.height || 80;
+    canvasOff.width = size; canvasOff.height = size;
     const ctxOff = canvasOff.getContext('2d');
-    ctxOff.drawImage(img, 0, 0);
+    ctxOff.drawImage(img, 0, 0, size, size);
     const blob = await new Promise((res) => canvasOff.toBlob(res, 'image/png'));
     if (!blob) return null;
     const objUrl = URL.createObjectURL(blob);
@@ -109,14 +101,13 @@ async function svgToPngImage(svgString) {
   }
 }
 
-// Try to load as PNG: fetch->blob->objectURL first (best), then Image tag, then SVG->PNG client-side fallback, then placeholder
 async function tryLoadSprite(url, id) {
   try {
-    // 1) Try fetch->blob
+    // 1) Try fetch->blob (best for cross-origin handling)
     const fetched = await fetchImageAsObject(url);
     if (fetched && (fetched.naturalWidth || fetched.width)) return fetched;
 
-    // 2) Try Image tag (may work if CORS allows)
+    // 2) Try Image tag
     const img = new Image();
     img.crossOrigin = 'anonymous';
     const imageTagLoaded = await new Promise((resolve) => {
@@ -126,9 +117,9 @@ async function tryLoadSprite(url, id) {
     });
     if (imageTagLoaded && (imageTagLoaded.naturalWidth || imageTagLoaded.width)) return imageTagLoaded;
 
-    // 3) SVG->PNG fallback (guaranteed same-origin because it's a data URL we generate)
+    // 3) SVG->PNG fallback
     if (svgFallbacks[id]) {
-      const pngFromSvg = await svgToPngImage(svgFallbacks[id]);
+      const pngFromSvg = await svgToPngImage(svgFallbacks[id], 200);
       if (pngFromSvg && (pngFromSvg.naturalWidth || pngFromSvg.width)) return pngFromSvg;
     }
 
@@ -143,7 +134,7 @@ function createPlaceholderImage(id) {
   const base = pokemonBase.find(p => p.id === id) || { color: '#777', name: '#' + id };
   const color = base.color || '#777';
   const name = (base.name || ('#' + id)).substring(0, 10);
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='80' height='80' fill='${color}' /><text x='40' y='45' font-size='12' fill='white' text-anchor='middle' font-family='monospace'>${name}</text></svg>`;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='${color}' /><text x='100' y='110' font-size='18' fill='white' text-anchor='middle' font-family='monospace'>${name}</text></svg>`;
   const img = new Image();
   img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   return img;
