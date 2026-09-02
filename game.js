@@ -32,18 +32,18 @@ const pokemonBase = [
   { id: 102, name: 'Exeggcute', type: 'grass', hp: 60, atk: 40, def: 80, spa: 60, spd: 85, spe: 40, catchRate: 190, color: '#A8B820' }
 ];
 
-// Use jsDelivr CDN (reliable CORS)
+// Use local assets (assets/sprites/*.svg) for reliable same-origin loading on mobile
 const spriteUrls = {
-  1:   'https://cdn.jsdelivr.net/gh/msikma/pokesprite@master/pokemon-icon/pokemon/001.png',
-  4:   'https://cdn.jsdelivr.net/gh/msikma/pokesprite@master/pokemon-icon/pokemon/004.png',
-  7:   'https://cdn.jsdelivr.net/gh/msikma/pokesprite@master/pokemon-icon/pokemon/007.png',
-  25:  'https://cdn.jsdelivr.net/gh/msikma/pokesprite@master/pokemon-icon/pokemon/025.png',
-  58:  'https://cdn.jsdelivr.net/gh/msikma/pokesprite@master/pokemon-icon/pokemon/058.png',
-  63:  'https://cdn.jsdelivr.net/gh/msikma/pokesprite@master/pokemon-icon/pokemon/063.png',
-  69:  'https://cdn.jsdelivr.net/gh/msikma/pokesprite@master/pokemon-icon/pokemon/069.png',
-  133: 'https://cdn.jsdelivr.net/gh/msikma/pokesprite@master/pokemon-icon/pokemon/133.png',
-  95:  'https://cdn.jsdelivr.net/gh/msikma/pokesprite@master/pokemon-icon/pokemon/095.png',
-  102: 'https://cdn.jsdelivr.net/gh/msikma/pokesprite@master/pokemon-icon/pokemon/102.png'
+  1:   'assets/sprites/001.svg',
+  4:   'assets/sprites/004.svg',
+  7:   'assets/sprites/007.svg',
+  25:  'assets/sprites/025.svg',
+  58:  'assets/sprites/058.svg',
+  63:  'assets/sprites/063.svg',
+  69:  'assets/sprites/069.svg',
+  133: 'assets/sprites/133.svg',
+  95:  'assets/sprites/095.svg',
+  102: 'assets/sprites/102.svg'
 };
 
 const spriteCache = {};
@@ -387,37 +387,24 @@ function drawBattle() {
   const player = battleState.playerPokemon; const enemy = battleState.enemyPokemon;
   ctx.fillStyle = '#A8D8A8'; ctx.fillRect(0, 0, canvas.width, 160);
   ctx.fillStyle = '#D4C9A8'; ctx.fillRect(180, 20, 120, 100); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(180, 20, 120, 100);
-
-  // Enemy sprite
   const enemySprite = spriteCache[enemy.id];
-  if (enemySprite && enemySprite instanceof HTMLImageElement && enemySprite.complete && enemySprite.naturalWidth) {
-    try { ctx.drawImage(enemySprite, 200, 35, 80, 80); } catch (e) { ctx.fillStyle = enemy.color; ctx.fillRect(220, 50, 60, 60); }
-  } else { ctx.fillStyle = enemy.color; ctx.fillRect(220, 50, 60, 60); }
-
+  if (enemySprite && enemySprite instanceof HTMLImageElement && enemySprite.complete && enemySprite.naturalWidth) { try { ctx.drawImage(enemySprite, 200, 35, 80, 80); } catch (e) { ctx.fillStyle = enemy.color; ctx.fillRect(220, 50, 60, 60); } } else { ctx.fillStyle = enemy.color; ctx.fillRect(220, 50, 60, 60); }
   ctx.fillStyle = '#F8F8D8'; ctx.fillRect(10, 20, 160, 60); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(10, 20, 160, 60);
   ctx.fillStyle = '#000'; ctx.font = 'bold 14px monospace'; ctx.fillText(enemy.name.toUpperCase(), 20, 42);
   ctx.font = '12px monospace'; ctx.fillText('Lv' + enemy.level, 130, 42);
   ctx.fillStyle = '#FF0000'; ctx.fillRect(20, 50, 80, 8); ctx.fillStyle = '#00AA00'; const enemyHpPercent = Math.max(0, enemy.currentHp / enemy.maxHp); ctx.fillRect(20, 50, 80 * enemyHpPercent, 8); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(20, 50, 80, 8);
-
-  // Player
   ctx.fillStyle = '#D4C9A8'; ctx.fillRect(20, 170, 120, 100); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(20, 170, 120, 100);
   const playerSprite = spriteCache[player.id];
-  if (playerSprite && playerSprite instanceof HTMLImageElement && playerSprite.complete && playerSprite.naturalWidth) {
-    try { ctx.drawImage(playerSprite, 40, 185, 80, 80); } catch (e) { ctx.fillStyle = player.color; ctx.fillRect(60, 205, 60, 60); }
-  } else { ctx.fillStyle = player.color; ctx.fillRect(60, 205, 60, 60); }
-
+  if (playerSprite && playerSprite instanceof HTMLImageElement && playerSprite.complete && playerSprite.naturalWidth) { try { ctx.drawImage(playerSprite, 40, 185, 80, 80); } catch (e) { ctx.fillStyle = player.color; ctx.fillRect(60, 205, 60, 60); } } else { ctx.fillStyle = player.color; ctx.fillRect(60, 205, 60, 60); }
   ctx.fillStyle = '#F8F8D8'; ctx.fillRect(150, 170, 160, 100); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(150, 170, 160, 100);
   ctx.fillStyle = '#000'; ctx.font = 'bold 14px monospace'; ctx.fillText(player.name.toUpperCase(), 160, 192);
   ctx.font = '12px monospace'; ctx.fillText('Lv' + player.level, 270, 192);
   ctx.font = '12px monospace'; ctx.fillText('HP', 160, 210);
   ctx.fillStyle = '#FF0000'; ctx.fillRect(190, 200, 110, 10); ctx.fillStyle = '#00AA00'; const playerHpPercent = Math.max(0, player.currentHp / player.maxHp); ctx.fillRect(190, 200, 110 * playerHpPercent, 10); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(190, 200, 110, 10);
   ctx.font = '10px monospace'; ctx.fillStyle = '#000'; ctx.fillText(player.currentHp + '/' + player.maxHp, 160, 240);
-
   ctx.fillStyle = '#6B8FBF'; ctx.fillRect(190, 245, 110, 8); ctx.fillStyle = '#FFD60A'; ctx.fillRect(190, 245, 110 * 0.5, 8); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(190, 245, 110, 8); ctx.font = '9px monospace'; ctx.fillStyle = '#000'; ctx.fillText('EXP', 160, 254);
-
   ctx.fillStyle = '#336699'; ctx.fillRect(0, 275, canvas.width, 60); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(0, 275, canvas.width, 60);
-  ctx.fillStyle = '#FFF'; ctx.font = '12px monospace'; const logMsg = battleState.battleLog.slice(-1)[0] || 'Go!'; ctx.fillText(logMsg, 10, 305);
-  ctx.fillStyle = '#FFD60A'; ctx.font = 'bold 11px monospace'; ctx.fillText('A:ATTACK  Y:ITEM  B:RUN', 10, 325);
+  ctx.fillStyle = '#FFF'; ctx.font = '12px monospace'; const logMsg = battleState.battleLog.slice(-1)[0] || 'Go!'; ctx.fillText(logMsg, 10, 305); ctx.fillStyle = '#FFD60A'; ctx.font = 'bold 11px monospace'; ctx.fillText('A:ATTACK  Y:ITEM  B:RUN', 10, 325);
 }
 
 function calculateDamage(attacker, defender) {
@@ -458,21 +445,14 @@ function runAway() {
 }
 
 function endBattle(won) {
-  gameState.inBattle = false;
-  if (won) { gameState.money += 50; gameState.level++; showError('Won Battle! +$50 +1 Level!'); } else { gameState.money = Math.max(0, gameState.money - 25); showError('Lost Battle! -$25'); }
+  gameState.inBattle = false; if (won) { gameState.money += 50; gameState.level++; showError('Won Battle! +$50 +1 Level!'); } else { gameState.money = Math.max(0, gameState.money - 25); showError('Lost Battle! -$25'); }
   updateUI(); startExploration();
 }
 
-function openMainMenu() {
-  gameState.menuOpen = !gameState.menuOpen; if (gameState.menuOpen) { const menu = `\n=== MAIN MENU ===\n\n[SELECT] - Items\n[X] - Team\n[START] - Menu\n\nA - Battle\nB - Back\n`; showError(menu); }
-}
+function openMainMenu() { gameState.menuOpen = !gameState.menuOpen; if (gameState.menuOpen) { const menu = `\n=== MAIN MENU ===\n\n[SELECT] - Items\n[X] - Team\n[START] - Menu\n\nA - Battle\nB - Back\n`; showError(menu); } }
 
-function showItems() {
-  let itemsText = '=== ITEMS ===\n\n'; itemsText += `Pokéballs: ${gameState.items.pokeball}\n`; itemsText += `Great Balls: ${gameState.items.greatball}\n`; itemsText += `Ultra Balls: ${gameState.items.ultraball}\n`; itemsText += `Potions: ${gameState.items.potion}\n`; itemsText += `Super Potions: ${gameState.items.superpotion}\n\n`; itemsText += `Money: $${gameState.money}`; alert(itemsText);
-}
+function showItems() { let itemsText = '=== ITEMS ===\n\n'; itemsText += `Pokéballs: ${gameState.items.pokeball}\n`; itemsText += `Great Balls: ${gameState.items.greatball}\n`; itemsText += `Ultra Balls: ${gameState.items.ultraball}\n`; itemsText += `Potions: ${gameState.items.potion}\n`; itemsText += `Super Potions: ${gameState.items.superpotion}\n\n`; itemsText += `Money: $${gameState.money}`; alert(itemsText); }
 
-function showTeam() {
-  let teamText = '=== YOUR TEAM ===\n\n'; if (gameState.team.length === 0) { teamText = 'No Pokémon!'; } else { gameState.team.forEach((pok, i) => { teamText += `${i + 1}. ${pok.name}\n`; teamText += `   Lv.${pok.level} [${pok.type.toUpperCase()}]\n`; teamText += `   HP: ${pok.currentHp}/${pok.maxHp}\n\n`; }); } alert(teamText);
-}
+function showTeam() { let teamText = '=== YOUR TEAM ===\n\n'; if (gameState.team.length === 0) { teamText = 'No Pokémon!'; } else { gameState.team.forEach((pok, i) => { teamText += `${i + 1}. ${pok.name}\n`; teamText += `   Lv.${pok.level} [${pok.type.toUpperCase()}]\n`; teamText += `   HP: ${pok.currentHp}/${pok.maxHp}\n\n`; }); } alert(teamText); }
 
 setupAuth();
