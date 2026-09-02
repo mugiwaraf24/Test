@@ -1,4 +1,4 @@
-// Full Pokémon-Style Game with Nintendo Game Boy Controls & Authentic Battle UI
+// Pokémon-style game: use PNG sprites with client-side SVG->PNG fallback
 
 const TYPES = {
   fire: { weak: ['water', 'rock', 'ground'], strong: ['grass', 'bug', 'ice', 'steel'], color: '#FF6B35' },
@@ -32,13 +32,27 @@ const pokemonBase = [
   { id: 102, name: 'Exeggcute', type: 'grass', hp: 60, atk: 40, def: 80, spa: 60, spd: 85, spe: 40, catchRate: 190, color: '#A8B820' }
 ];
 
-// Inline data URLs so sprites are guaranteed to be available without network or CORS issues
-const spriteUrls = (function buildDataUrls() {
+// Primary sprite URLs: PokeAPI raw GitHub PNGs
+const spriteUrls = {
+  1:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1.png',
+  4:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/4.png',
+  7:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/7.png',
+  25:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png',
+  58:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/58.png',
+  63:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/63.png',
+  69:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/69.png',
+  133: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/133.png',
+  95:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/95.png',
+  102: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/102.png'
+};
+
+// Fallback SVG templates (used to create PNGs client-side if remote fetch fails)
+const svgFallbacks = (function() {
   const map = {};
   pokemonBase.forEach(p => {
     const name = (p.name || ('#' + p.id)).substring(0, 12);
     const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='80' height='80' fill='${p.color || '#777'}'/><text x='40' y='45' font-size='10' fill='white' text-anchor='middle' font-family='monospace'>${name}</text></svg>`;
-    map[p.id] = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    map[p.id] = svg;
   });
   return map;
 })();
@@ -63,33 +77,62 @@ async function fetchImageAsObject(url) {
   }
 }
 
-async function tryLoadSprite(url) {
+// Convert an SVG string to a PNG Image object client-side
+async function svgToPngImage(svgString) {
   try {
-    if (typeof url === 'string' && url.startsWith('data:')) {
-      const img = new Image();
-      return await new Promise((resolve) => {
-        img.onload = () => resolve(img);
-        img.onerror = () => resolve(null);
-        img.src = url;
-      });
-    }
+    const img = new Image();
+    const svgDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
+    // Load SVG into image
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = svgDataUrl;
+    });
+    // Draw onto offscreen canvas and export as PNG blob
+    const canvasOff = document.createElement('canvas');
+    canvasOff.width = img.width || 80;
+    canvasOff.height = img.height || 80;
+    const ctxOff = canvasOff.getContext('2d');
+    ctxOff.drawImage(img, 0, 0);
+    const blob = await new Promise((res) => canvasOff.toBlob(res, 'image/png'));
+    if (!blob) return null;
+    const objUrl = URL.createObjectURL(blob);
+    return await new Promise((resolve, reject) => {
+      const pngImg = new Image();
+      pngImg.onload = () => { URL.revokeObjectURL(objUrl); resolve(pngImg); };
+      pngImg.onerror = (e) => { URL.revokeObjectURL(objUrl); reject(e); };
+      pngImg.src = objUrl;
+    });
+  } catch (e) {
+    console.warn('svgToPngImage failed', e);
+    return null;
+  }
+}
 
+// Try to load as PNG: fetch->blob->objectURL first (best), then Image tag, then SVG->PNG client-side fallback, then placeholder
+async function tryLoadSprite(url, id) {
+  try {
+    // 1) Try fetch->blob
     const fetched = await fetchImageAsObject(url);
     if (fetched && (fetched.naturalWidth || fetched.width)) return fetched;
 
+    // 2) Try Image tag (may work if CORS allows)
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    return await new Promise((resolve) => {
-      let finished = false;
-      img.onload = () => { finished = true; resolve(img); };
-      img.onerror = async () => {
-        if (finished) return resolve(null);
-        const fetched2 = await fetchImageAsObject(url);
-        if (fetched2) return resolve(fetched2);
-        resolve(null);
-      };
+    const imageTagLoaded = await new Promise((resolve) => {
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
       img.src = url;
     });
+    if (imageTagLoaded && (imageTagLoaded.naturalWidth || imageTagLoaded.width)) return imageTagLoaded;
+
+    // 3) SVG->PNG fallback (guaranteed same-origin because it's a data URL we generate)
+    if (svgFallbacks[id]) {
+      const pngFromSvg = await svgToPngImage(svgFallbacks[id]);
+      if (pngFromSvg && (pngFromSvg.naturalWidth || pngFromSvg.width)) return pngFromSvg;
+    }
+
+    return null;
   } catch (e) {
     console.warn('tryLoadSprite unexpected error', e);
     return null;
@@ -101,15 +144,13 @@ function createPlaceholderImage(id) {
   const color = base.color || '#777';
   const name = (base.name || ('#' + id)).substring(0, 10);
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='80' height='80' fill='${color}' /><text x='40' y='45' font-size='12' fill='white' text-anchor='middle' font-family='monospace'>${name}</text></svg>`;
-  const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   const img = new Image();
-  img.src = dataUrl;
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   return img;
 }
 
 function loadSpriteImage(id) {
-  const url = spriteUrls[id];
-  if (!url) {
+  if (!spriteUrls[id]) {
     const ph = createPlaceholderImage(id);
     spriteCache[id] = ph;
     return ph;
@@ -117,16 +158,16 @@ function loadSpriteImage(id) {
   if (spriteCache[id]) return spriteCache[id] === 'loading' ? null : spriteCache[id];
 
   spriteCache[id] = 'loading';
-  tryLoadSprite(url).then((img) => {
+  tryLoadSprite(spriteUrls[id], id).then((img) => {
     if (img && (img.naturalWidth || img.width)) {
       spriteCache[id] = img;
-      console.log('Sprite loaded', id);
+      console.log('Sprite loaded', id, spriteUrls[id]);
     } else {
       spriteCache[id] = createPlaceholderImage(id);
       console.warn('Using placeholder for', id);
     }
     try { if (gameState && gameState.gameMode === 'battle') drawBattle(); else drawExploration(); } catch (e) {}
-  }).catch(async (e) => {
+  }).catch((e) => {
     console.warn('tryLoadSprite rejected for', id, e);
     spriteCache[id] = createPlaceholderImage(id);
     try { if (gameState && gameState.gameMode === 'battle') drawBattle(); else drawExploration(); } catch (e) {}
