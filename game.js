@@ -32,23 +32,19 @@ const pokemonBase = [
   { id: 102, name: 'Exeggcute', type: 'grass', hp: 60, atk: 40, def: 80, spa: 60, spd: 85, spe: 40, catchRate: 190, color: '#A8B820' }
 ];
 
-// Use local SVG files in assets/sprites/ so images always load from the repo (no CORS/network dependency)
-const spriteUrls = {
-  1:  'assets/sprites/1.svg',
-  4:  'assets/sprites/4.svg',
-  7:  'assets/sprites/7.svg',
-  25: 'assets/sprites/25.svg',
-  58: 'assets/sprites/58.svg',
-  63: 'assets/sprites/63.svg',
-  69: 'assets/sprites/69.svg',
-  133:'assets/sprites/133.svg',
-  95: 'assets/sprites/95.svg',
-  102:'assets/sprites/102.svg'
-};
+// Inline data URLs so sprites are guaranteed to be available without network or CORS issues
+const spriteUrls = (function buildDataUrls() {
+  const map = {};
+  pokemonBase.forEach(p => {
+    const name = (p.name || ('#' + p.id)).substring(0, 12);
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='80' height='80' fill='${p.color || '#777'}'/><text x='40' y='45' font-size='10' fill='white' text-anchor='middle' font-family='monospace'>${name}</text></svg>`;
+    map[p.id] = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+  return map;
+})();
 
 const spriteCache = {};
 
-// Helper: fetch a URL and return a loaded Image using an object URL (same-origin drawable)
 async function fetchImageAsObject(url) {
   try {
     const resp = await fetch(url);
@@ -67,14 +63,20 @@ async function fetchImageAsObject(url) {
   }
 }
 
-// Load sprite with fallback: try fetch->objectURL first (more reliable for CORS), then try Image tag, then placeholder.
 async function tryLoadSprite(url) {
   try {
-    // First attempt: fetch the resource and load via object URL (ensures drawable image even if remote server doesn't set CORS for image draws)
+    if (typeof url === 'string' && url.startsWith('data:')) {
+      const img = new Image();
+      return await new Promise((resolve) => {
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = url;
+      });
+    }
+
     const fetched = await fetchImageAsObject(url);
     if (fetched && (fetched.naturalWidth || fetched.width)) return fetched;
 
-    // Fallback: try loading via Image with crossOrigin
     const img = new Image();
     img.crossOrigin = 'anonymous';
     return await new Promise((resolve) => {
@@ -82,7 +84,6 @@ async function tryLoadSprite(url) {
       img.onload = () => { finished = true; resolve(img); };
       img.onerror = async () => {
         if (finished) return resolve(null);
-        console.warn('Image tag load failed, attempting fetch fallback for', url);
         const fetched2 = await fetchImageAsObject(url);
         if (fetched2) return resolve(fetched2);
         resolve(null);
@@ -107,7 +108,8 @@ function createPlaceholderImage(id) {
 }
 
 function loadSpriteImage(id) {
-  if (!spriteUrls[id]) {
+  const url = spriteUrls[id];
+  if (!url) {
     const ph = createPlaceholderImage(id);
     spriteCache[id] = ph;
     return ph;
@@ -115,28 +117,18 @@ function loadSpriteImage(id) {
   if (spriteCache[id]) return spriteCache[id] === 'loading' ? null : spriteCache[id];
 
   spriteCache[id] = 'loading';
-  // First try the local file via fetch->objectURL, then fall back to other methods
-  tryLoadSprite(spriteUrls[id]).then(async (img) => {
+  tryLoadSprite(url).then((img) => {
     if (img && (img.naturalWidth || img.width)) {
       spriteCache[id] = img;
-      console.log('Sprite loaded', id, spriteUrls[id]);
-    } else {
-      console.warn('Sprite failed initial load, using placeholder', id, spriteUrls[id]);
-      const ph = createPlaceholderImage(id);
-      spriteCache[id] = ph;
-    }
-    try {
-      if (gameState && gameState.gameMode === 'battle') drawBattle();
-      else drawExploration();
-    } catch (e) { /* ignore */ }
-  }).catch(async (e) => {
-    console.warn('tryLoadSprite promise rejected for', spriteUrls[id], e, '- attempting explicit fetch fallback');
-    const fetched = await fetchImageAsObject(spriteUrls[id]);
-    if (fetched && (fetched.naturalWidth || fetched.width)) {
-      spriteCache[id] = fetched;
+      console.log('Sprite loaded', id);
     } else {
       spriteCache[id] = createPlaceholderImage(id);
+      console.warn('Using placeholder for', id);
     }
+    try { if (gameState && gameState.gameMode === 'battle') drawBattle(); else drawExploration(); } catch (e) {}
+  }).catch(async (e) => {
+    console.warn('tryLoadSprite rejected for', id, e);
+    spriteCache[id] = createPlaceholderImage(id);
     try { if (gameState && gameState.gameMode === 'battle') drawBattle(); else drawExploration(); } catch (e) {}
   });
   return null;
@@ -406,7 +398,7 @@ function drawBattle() {
   // Enemy sprite
   const enemySprite = spriteCache[enemy.id];
   if (enemySprite && enemySprite instanceof HTMLImageElement && enemySprite.complete && enemySprite.naturalWidth) {
-    try { ctx.drawImage(enemySprite, 200, 35, 80, 80); } catch (e) { console.warn('drawImage enemy error', e, enemy.id, spriteUrls[enemy.id]); ctx.fillStyle = enemy.color; ctx.fillRect(220, 50, 60, 60); }
+    try { ctx.drawImage(enemySprite, 200, 35, 80, 80); } catch (e) { console.warn('drawImage enemy error', e, enemy.id); ctx.fillStyle = enemy.color; ctx.fillRect(220, 50, 60, 60); }
   } else { ctx.fillStyle = enemy.color; ctx.fillRect(220, 50, 60, 60); }
 
   ctx.fillStyle = '#F8F8D8'; ctx.fillRect(10, 20, 160, 60); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(10, 20, 160, 60);
@@ -417,7 +409,7 @@ function drawBattle() {
   // Player
   const playerSprite = spriteCache[player.id];
   if (playerSprite && playerSprite instanceof HTMLImageElement && playerSprite.complete && playerSprite.naturalWidth) {
-    try { ctx.drawImage(playerSprite, 40, 185, 80, 80); } catch (e) { console.warn('drawImage player error', e, player.id, spriteUrls[player.id]); ctx.fillStyle = player.color; ctx.fillRect(60, 205, 60, 60); }
+    try { ctx.drawImage(playerSprite, 40, 185, 80, 80); } catch (e) { console.warn('drawImage player error', e, player.id); ctx.fillStyle = player.color; ctx.fillRect(60, 205, 60, 60); }
   } else { ctx.fillStyle = player.color; ctx.fillRect(60, 205, 60, 60); }
 
   ctx.fillStyle = '#F8F8D8'; ctx.fillRect(150, 170, 160, 100); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(150, 170, 160, 100);
