@@ -48,7 +48,7 @@ const spriteUrls = {
 
 const spriteCache = {};
 
-// Load sprite with fallback: try Image tag, if that errors try fetch->blob.
+// Load sprite with fallback: try Image tag, if that errors try fetch->blob, and finally generate inline SVG placeholder.
 async function tryLoadSprite(url) {
   // Attempt via Image first
   try {
@@ -58,6 +58,7 @@ async function tryLoadSprite(url) {
       img.onload = () => { finished = true; resolve(img); };
       img.onerror = async () => {
         if (finished) return resolve(null);
+        console.warn('Image tag load failed, attempting fetch fallback for', url);
         // Fallback: fetch the file and create object URL
         try {
           const resp = await fetch(url);
@@ -81,8 +82,24 @@ async function tryLoadSprite(url) {
   }
 }
 
+function createPlaceholderImage(id) {
+  const base = pokemonBase.find(p => p.id === id) || { color: '#777', name: '#' + id };
+  const color = base.color || '#777';
+  const name = (base.name || ('#' + id)).substring(0, 10);
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='80' height='80' fill='${color}' /><text x='40' y='45' font-size='12' fill='white' text-anchor='middle' font-family='monospace'>${name}</text></svg>`;
+  const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  const img = new Image();
+  img.src = dataUrl;
+  return img;
+}
+
 function loadSpriteImage(id) {
-  if (!spriteUrls[id]) return null;
+  if (!spriteUrls[id]) {
+    // If no external URL, create inline placeholder immediately
+    const ph = createPlaceholderImage(id);
+    spriteCache[id] = ph;
+    return ph;
+  }
   if (spriteCache[id]) return spriteCache[id] === 'loading' ? null : spriteCache[id];
 
   // mark loading
@@ -92,14 +109,20 @@ function loadSpriteImage(id) {
       spriteCache[id] = img;
       console.log('Sprite loaded', id, spriteUrls[id]);
     } else {
-      spriteCache[id] = null;
-      console.warn('Sprite failed to load:', id, spriteUrls[id]);
+      console.warn('Sprite failed to load:', id, spriteUrls[id], '- using inline placeholder');
+      const ph = createPlaceholderImage(id);
+      spriteCache[id] = ph;
     }
     // redraw current view
     try {
       if (gameState && gameState.gameMode === 'battle') drawBattle();
       else drawExploration();
     } catch (e) { /* ignore */ }
+  }).catch((e) => {
+    console.warn('tryLoadSprite promise rejected for', spriteUrls[id], e);
+    const ph = createPlaceholderImage(id);
+    spriteCache[id] = ph;
+    try { if (gameState && gameState.gameMode === 'battle') drawBattle(); else drawExploration(); } catch (e) {}
   });
   return null;
 }
