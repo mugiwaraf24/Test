@@ -48,26 +48,29 @@ const spriteUrls = {
 
 const spriteCache = {};
 
-// Load sprite with fallback: try Image tag, if that errors try fetch->blob, and finally generate inline SVG placeholder.
+// Load sprite with fallback: try Image tag (with CORS), if that errors try fetch->blob, and finally generate inline SVG placeholder.
 async function tryLoadSprite(url) {
-  // Attempt via Image first
+  // Attempt via Image first (set crossOrigin to allow canvas drawing)
   try {
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     return await new Promise((resolve) => {
       let finished = false;
       img.onload = () => { finished = true; resolve(img); };
       img.onerror = async () => {
         if (finished) return resolve(null);
         console.warn('Image tag load failed, attempting fetch fallback for', url);
-        // Fallback: fetch the file and create object URL
+        // Fallback: fetch the file and create object URL (this is same-origin blob and should be drawable)
         try {
           const resp = await fetch(url);
           if (!resp.ok) throw new Error('Fetch status ' + resp.status);
           const blob = await resp.blob();
           const objUrl = URL.createObjectURL(blob);
           const img2 = new Image();
+          // object URLs are same-origin so crossOrigin not required, but set for consistency
+          img2.crossOrigin = 'anonymous';
           img2.onload = () => { URL.revokeObjectURL(objUrl); resolve(img2); };
-          img2.onerror = () => { URL.revokeObjectURL(objUrl); resolve(null); };
+          img2.onerror = (ev) => { URL.revokeObjectURL(objUrl); console.warn('object URL image error', ev, url); resolve(null); };
           img2.src = objUrl;
         } catch (e) {
           console.warn('Fetch fallback failed for', url, e);
@@ -391,7 +394,7 @@ function drawBattle() {
   // Enemy sprite
   const enemySprite = spriteCache[enemy.id];
   if (enemySprite && enemySprite instanceof HTMLImageElement && enemySprite.complete && enemySprite.naturalWidth) {
-    try { ctx.drawImage(enemySprite, 200, 35, 80, 80); } catch (e) { ctx.fillStyle = enemy.color; ctx.fillRect(220, 50, 60, 60); }
+    try { ctx.drawImage(enemySprite, 200, 35, 80, 80); } catch (e) { console.warn('drawImage enemy error', e, enemy.id, spriteUrls[enemy.id]); ctx.fillStyle = enemy.color; ctx.fillRect(220, 50, 60, 60); }
   } else { ctx.fillStyle = enemy.color; ctx.fillRect(220, 50, 60, 60); }
 
   ctx.fillStyle = '#F8F8D8'; ctx.fillRect(10, 20, 160, 60); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(10, 20, 160, 60);
@@ -403,7 +406,7 @@ function drawBattle() {
   ctx.fillStyle = '#D4C9A8'; ctx.fillRect(20, 170, 120, 100); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(20, 170, 120, 100);
   const playerSprite = spriteCache[player.id];
   if (playerSprite && playerSprite instanceof HTMLImageElement && playerSprite.complete && playerSprite.naturalWidth) {
-    try { ctx.drawImage(playerSprite, 40, 185, 80, 80); } catch (e) { ctx.fillStyle = player.color; ctx.fillRect(60, 205, 60, 60); }
+    try { ctx.drawImage(playerSprite, 40, 185, 80, 80); } catch (e) { console.warn('drawImage player error', e, player.id, spriteUrls[player.id]); ctx.fillStyle = player.color; ctx.fillRect(60, 205, 60, 60); }
   } else { ctx.fillStyle = player.color; ctx.fillRect(60, 205, 60, 60); }
 
   ctx.fillStyle = '#F8F8D8'; ctx.fillRect(150, 170, 160, 100); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(150, 170, 160, 100);
@@ -449,8 +452,7 @@ function enemyAttack() {
 
 function useItemInBattle() {
   if (gameState.items.potion <= 0) { showError('No Potions!'); return; }
-  const heal = 20; battleState.playerPokemon.currentHp = Math.min(battleState.playerPokemon.maxHp, battleState.playerPokemon.currentHp + heal); gameState.items.potion--; 
-  battleState.battleLog.push(battleState.playerPokemon.name + ' used Potion!'); battleState.playerTurn = false; setTimeout(() => enemyAttack(), 600); drawBattle();
+  const heal = 20; battleState.playerPokemon.currentHp = Math.min(battleState.playerPokemon.maxHp, battleState.playerPokemon.currentHp + heal); gameState.items.potion--; battleState.battleLog.push(battleState.playerPokemon.name + ' used Potion!'); battleState.playerTurn = false; setTimeout(() => enemyAttack(), 600); drawBattle();
 }
 
 function runAway() {
@@ -463,16 +465,10 @@ function endBattle(won) {
   updateUI(); startExploration();
 }
 
-function openMainMenu() {
-  gameState.menuOpen = !gameState.menuOpen; if (gameState.menuOpen) { const menu = `\n=== MAIN MENU ===\n\n[SELECT] - Items\n[X] - Team\n[START] - Menu\n\nA - Battle\nB - Back\n`; showError(menu); } 
-}
+function openMainMenu() { gameState.menuOpen = !gameState.menuOpen; if (gameState.menuOpen) { const menu = `\n=== MAIN MENU ===\n\n[SELECT] - Items\n[X] - Team\n[START] - Menu\n\nA - Battle\nB - Back\n`; showError(menu); } }
 
-function showItems() {
-  let itemsText = '=== ITEMS ===\n\n'; itemsText += `Pokéballs: ${gameState.items.pokeball}\n`; itemsText += `Great Balls: ${gameState.items.greatball}\n`; itemsText += `Ultra Balls: ${gameState.items.ultraball}\n`; itemsText += `Potions: ${gameState.items.potion}\n`; itemsText += `Super Potions: ${gameState.items.superpotion}\n\n`; itemsText += `Money: $${gameState.money}`; alert(itemsText);
-}
+function showItems() { let itemsText = '=== ITEMS ===\n\n'; itemsText += `Pokéballs: ${gameState.items.pokeball}\n`; itemsText += `Great Balls: ${gameState.items.greatball}\n`; itemsText += `Ultra Balls: ${gameState.items.ultraball}\n`; itemsText += `Potions: ${gameState.items.potion}\n`; itemsText += `Super Potions: ${gameState.items.superpotion}\n\n`; itemsText += `Money: $${gameState.money}`; alert(itemsText); }
 
-function showTeam() {
-  let teamText = '=== YOUR TEAM ===\n\n'; if (gameState.team.length === 0) { teamText = 'No Pokémon!'; } else { gameState.team.forEach((pok, i) => { teamText += `${i + 1}. ${pok.name}\n`; teamText += `   Lv.${pok.level} [${pok.type.toUpperCase()}]\n`; teamText += `   HP: ${pok.currentHp}/${pok.maxHp}\n\n`; }); } alert(teamText);
-}
+function showTeam() { let teamText = '=== YOUR TEAM ===\n\n'; if (gameState.team.length === 0) { teamText = 'No Pokémon!'; } else { gameState.team.forEach((pok, i) => { teamText += `${i + 1}. ${pok.name}\n`; teamText += `   Lv.${pok.level} [${pok.type.toUpperCase()}]\n`; teamText += `   HP: ${pok.currentHp}/${pok.maxHp}\n\n`; }); } alert(teamText); }
 
 setupAuth();
