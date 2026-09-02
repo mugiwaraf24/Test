@@ -32,26 +32,12 @@ const pokemonBase = [
   { id: 102, name: 'Exeggcute', type: 'grass', hp: 60, atk: 40, def: 80, spa: 60, spd: 85, spe: 40, catchRate: 190, color: '#A8B820' }
 ];
 
-// Use higher-resolution official artwork from the PokeAPI sprites repo
-const spriteUrls = {
-  1:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/1.png',
-  4:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/4.png',
-  7:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/7.png',
-  25:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png',
-  58:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/58.png',
-  63:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/63.png',
-  69:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/69.png',
-  133: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/133.png',
-  95:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/95.png',
-  102: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/102.png'
-};
-
 // Fallback SVG templates (used if fetching PNGs fails)
 const svgFallbacks = (function() {
   const map = {};
   pokemonBase.forEach(p => {
     const name = (p.name || ('#' + p.id)).substring(0, 12);
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='${p.color || '#777'}'/><text x='100' y='110' font-size='18' fill='white' text-anchor='middle' font-family='monospace'>${name}</text></svg>`;
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='${p.color || '#777'}'/><text x='100' y='110' font-size='18' fill='white' text-anchor='middle'>${name}</text></svg>`;
     map[p.id] = svg;
   });
   return map;
@@ -59,111 +45,23 @@ const svgFallbacks = (function() {
 
 const spriteCache = {};
 
-async function fetchImageAsObject(url) {
-  try {
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error('Fetch status ' + resp.status);
-    const blob = await resp.blob();
-    const objUrl = URL.createObjectURL(blob);
-    return await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => { URL.revokeObjectURL(objUrl); resolve(img); };
-      img.onerror = (e) => { URL.revokeObjectURL(objUrl); reject(e); };
-      img.src = objUrl;
-    });
-  } catch (e) {
-    console.warn('fetchImageAsObject failed for', url, e);
-    return null;
-  }
-}
-
-async function svgToPngImage(svgString, size = 200) {
-  try {
-    const img = new Image();
-    const svgDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
-    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = svgDataUrl; });
-    const canvasOff = document.createElement('canvas');
-    canvasOff.width = size; canvasOff.height = size;
-    const ctxOff = canvasOff.getContext('2d');
-    ctxOff.drawImage(img, 0, 0, size, size);
-    const blob = await new Promise((res) => canvasOff.toBlob(res, 'image/png'));
-    if (!blob) return null;
-    const objUrl = URL.createObjectURL(blob);
-    return await new Promise((resolve, reject) => {
-      const pngImg = new Image();
-      pngImg.onload = () => { URL.revokeObjectURL(objUrl); resolve(pngImg); };
-      pngImg.onerror = (e) => { URL.revokeObjectURL(objUrl); reject(e); };
-      pngImg.src = objUrl;
-    });
-  } catch (e) {
-    console.warn('svgToPngImage failed', e);
-    return null;
-  }
-}
-
-async function tryLoadSprite(url, id) {
-  try {
-    // 1) Try fetch->blob (best for cross-origin handling)
-    const fetched = await fetchImageAsObject(url);
-    if (fetched && (fetched.naturalWidth || fetched.width)) return fetched;
-
-    // 2) Try Image tag
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    const imageTagLoaded = await new Promise((resolve) => {
-      img.onload = () => resolve(img);
-      img.onerror = () => resolve(null);
-      img.src = url;
-    });
-    if (imageTagLoaded && (imageTagLoaded.naturalWidth || imageTagLoaded.width)) return imageTagLoaded;
-
-    // 3) SVG->PNG fallback
-    if (svgFallbacks[id]) {
-      const pngFromSvg = await svgToPngImage(svgFallbacks[id], 200);
-      if (pngFromSvg && (pngFromSvg.naturalWidth || pngFromSvg.width)) return pngFromSvg;
-    }
-
-    return null;
-  } catch (e) {
-    console.warn('tryLoadSprite unexpected error', e);
-    return null;
-  }
-}
-
 function createPlaceholderImage(id) {
   const base = pokemonBase.find(p => p.id === id) || { color: '#777', name: '#' + id };
   const color = base.color || '#777';
   const name = (base.name || ('#' + id)).substring(0, 10);
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='${color}' /><text x='100' y='110' font-size='18' fill='white' text-anchor='middle' font-family='monospace'>${name}</text></svg>`;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='${color}' /><text x='100' y='110' font-size='18' fill='white' text-anchor='middle'>${name}</text></svg>`;
   const img = new Image();
   img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   return img;
 }
 
 function loadSpriteImage(id) {
-  if (!spriteUrls[id]) {
-    const ph = createPlaceholderImage(id);
-    spriteCache[id] = ph;
-    return ph;
-  }
-  if (spriteCache[id]) return spriteCache[id] === 'loading' ? null : spriteCache[id];
-
-  spriteCache[id] = 'loading';
-  tryLoadSprite(spriteUrls[id], id).then((img) => {
-    if (img && (img.naturalWidth || img.width)) {
-      spriteCache[id] = img;
-      console.log('Sprite loaded', id, spriteUrls[id]);
-    } else {
-      spriteCache[id] = createPlaceholderImage(id);
-      console.warn('Using placeholder for', id);
-    }
-    try { if (gameState && gameState.gameMode === 'battle') drawBattle(); else drawExploration(); } catch (e) {}
-  }).catch((e) => {
-    console.warn('tryLoadSprite rejected for', id, e);
-    spriteCache[id] = createPlaceholderImage(id);
-    try { if (gameState && gameState.gameMode === 'battle') drawBattle(); else drawExploration(); } catch (e) {}
-  });
-  return null;
+  // Create a placeholder immediately
+  const ph = createPlaceholderImage(id);
+  spriteCache[id] = ph;
+  
+  // Return the placeholder - fallback will be used if no external source
+  return ph;
 }
 
 let gameState = {
@@ -427,7 +325,7 @@ function drawBattle() {
   ctx.fillStyle = '#A8D8A8'; ctx.fillRect(0, 0, canvas.width, 160);
   ctx.fillStyle = '#D4C9A8'; ctx.fillRect(180, 20, 120, 100); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(180, 20, 120, 100);
 
-  // Enemy sprite
+  // Enemy sprite - Draw placeholder or sprite
   const enemySprite = spriteCache[enemy.id];
   if (enemySprite && enemySprite instanceof HTMLImageElement && enemySprite.complete && enemySprite.naturalWidth) {
     try { ctx.drawImage(enemySprite, 200, 35, 80, 80); } catch (e) { console.warn('drawImage enemy error', e, enemy.id); ctx.fillStyle = enemy.color; ctx.fillRect(220, 50, 60, 60); }
@@ -487,11 +385,11 @@ function enemyAttack() {
 
 function useItemInBattle() {
   if (gameState.items.potion <= 0) { showError('No Potions!'); return; }
-  const heal = 20; battleState.playerPokemon.currentHp = Math.min(battleState.playerPokemon.maxHp, battleState.playerPokemon.currentHp + heal); gameState.items.potion--; battleState.battleLog.push('Used Potion!'); drawBattle();
+  const heal = 20; battleState.playerPokemon.currentHp = Math.min(battleState.playerPokemon.maxHp, battleState.playerPokemon.currentHp + heal); gameState.items.potion--; battleState.battleLog.push('Used Potion!'); battleState.playerTurn = false; setTimeout(() => enemyAttack(), 800);
 }
 
 function runAway() {
-  const escape = Math.random() > 0.3; if (escape) { battleState.battleLog.push('Got away safely!'); showError('Escaped from battle!'); endBattle(false); } else { battleState.battleLog.push('Escape failed!'); drawBattle(); }
+  const escape = Math.random() > 0.3; if (escape) { battleState.battleLog.push('Got away safely!'); showError('Escaped from battle!'); endBattle(false); } else { battleState.battleLog.push('Escape failed!'); battleState.playerTurn = false; setTimeout(() => enemyAttack(), 800); }
 }
 
 function endBattle(won) {
@@ -500,11 +398,11 @@ function endBattle(won) {
   updateUI(); startExploration();
 }
 
-function openMainMenu() { gameState.menuOpen = !gameState.menuOpen; if (gameState.menuOpen) { const menu = `\n=== MAIN MENU ===\n\n[SELECT] - Items\n[X] - Team\n[START] - Menu\n\nA - Battle\nB - Back\n` ; console.log(menu); } }
+function openMainMenu() { gameState.menuOpen = !gameState.menuOpen; if (gameState.menuOpen) { const menu = `\n=== MAIN MENU ===\n\n[SELECT] - Items\n[X] - Team\n[START] - Menu\n\nA - Battle\nB - Close\n`; showError(menu); } }
 
-function showItems() { let itemsText = '=== ITEMS ===\n\n'; itemsText += `Pokéballs: ${gameState.items.pokeball}\n`; itemsText += `Great Balls: ${gameState.items.greatball}\n`; itemsText += `Ultraballs: ${gameState.items.ultraball}\n`; itemsText += `Potions: ${gameState.items.potion}\n`; alert(itemsText); }
+function showItems() { let itemsText = '=== ITEMS ===\n\n'; itemsText += `Pokéballs: ${gameState.items.pokeball}\n`; itemsText += `Great Balls: ${gameState.items.greatball}\n`; itemsText += `Ultra Balls: ${gameState.items.ultraball}\n`; itemsText += `Potions: ${gameState.items.potion}\n`; itemsText += `Super Potions: ${gameState.items.superpotion}\n`; showError(itemsText); }
 
-function showTeam() { let teamText = '=== YOUR TEAM ===\n\n'; if (gameState.team.length === 0) { teamText = 'No Pokémon!'; } else { gameState.team.forEach((pok, i) => { teamText += `${i + 1}. ${pok.name} Lv${pok.level} HP:${pok.currentHp}/${pok.maxHp}\n`; }); } alert(teamText); }
+function showTeam() { let teamText = '=== YOUR TEAM ===\n\n'; if (gameState.team.length === 0) { teamText = 'No Pokémon!'; } else { gameState.team.forEach((pok, i) => { teamText += `${i + 1}. ${pok.name} (Lv${pok.level}) HP: ${pok.currentHp}/${pok.maxHp}\n`; }); } showError(teamText); }
 
 // Minimal fallback handlers so clicks won't throw if not implemented yet
 function handleButtonA() { if (gameState.gameMode === 'explore') startRandomBattle(); else if (gameState.gameMode === 'battle') playerAttack(); }
