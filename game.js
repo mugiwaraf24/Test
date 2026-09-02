@@ -1,4 +1,4 @@
-// Pokémon-style game: use high-quality official artwork PNGs with robust fallback
+// Pokémon-style game with real high-quality official artwork
 
 const TYPES = {
   fire: { weak: ['water', 'rock', 'ground'], strong: ['grass', 'bug', 'ice', 'steel'], color: '#FF6B35' },
@@ -32,16 +32,19 @@ const pokemonBase = [
   { id: 102, name: 'Exeggcute', type: 'grass', hp: 60, atk: 40, def: 80, spa: 60, spd: 85, spe: 40, catchRate: 190, color: '#A8B820' }
 ];
 
-// Fallback SVG templates (used if fetching PNGs fails)
-const svgFallbacks = (function() {
-  const map = {};
-  pokemonBase.forEach(p => {
-    const name = (p.name || ('#' + p.id)).substring(0, 12);
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='${p.color || '#777'}'/><text x='100' y='110' font-size='18' fill='white' text-anchor='middle'>${name}</text></svg>`;
-    map[p.id] = svg;
-  });
-  return map;
-})();
+// High-quality official artwork from PokeAPI
+const spriteUrls = {
+  1:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/1.png',
+  4:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/4.png',
+  7:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/7.png',
+  25:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png',
+  58:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/58.png',
+  63:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/63.png',
+  69:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/69.png',
+  133: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/133.png',
+  95:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/95.png',
+  102: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/102.png'
+};
 
 const spriteCache = {};
 
@@ -55,13 +58,37 @@ function createPlaceholderImage(id) {
   return img;
 }
 
+// Load sprite with proper image handling
 function loadSpriteImage(id) {
-  // Create a placeholder immediately
-  const ph = createPlaceholderImage(id);
-  spriteCache[id] = ph;
+  if (spriteCache[id]) return spriteCache[id];
   
-  // Return the placeholder - fallback will be used if no external source
-  return ph;
+  const url = spriteUrls[id];
+  if (!url) {
+    const placeholder = createPlaceholderImage(id);
+    spriteCache[id] = placeholder;
+    return placeholder;
+  }
+  
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    spriteCache[id] = img;
+    try { 
+      if (gameState && gameState.gameMode === 'battle') drawBattle(); 
+      else drawExploration(); 
+    } catch (e) {}
+  };
+  img.onerror = () => {
+    spriteCache[id] = createPlaceholderImage(id);
+    try { 
+      if (gameState && gameState.gameMode === 'battle') drawBattle(); 
+      else drawExploration(); 
+    } catch (e) {}
+  };
+  img.src = url;
+  
+  // Return placeholder while loading
+  return createPlaceholderImage(id);
 }
 
 let gameState = {
@@ -325,9 +352,9 @@ function drawBattle() {
   ctx.fillStyle = '#A8D8A8'; ctx.fillRect(0, 0, canvas.width, 160);
   ctx.fillStyle = '#D4C9A8'; ctx.fillRect(180, 20, 120, 100); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(180, 20, 120, 100);
 
-  // Enemy sprite - Draw placeholder or sprite
+  // Enemy sprite - Draw real image if loaded
   const enemySprite = spriteCache[enemy.id];
-  if (enemySprite && enemySprite instanceof HTMLImageElement && enemySprite.complete && enemySprite.naturalWidth) {
+  if (enemySprite && enemySprite.src && enemySprite.naturalWidth > 0) {
     try { ctx.drawImage(enemySprite, 200, 35, 80, 80); } catch (e) { console.warn('drawImage enemy error', e, enemy.id); ctx.fillStyle = enemy.color; ctx.fillRect(220, 50, 60, 60); }
   } else { ctx.fillStyle = enemy.color; ctx.fillRect(220, 50, 60, 60); }
 
@@ -336,9 +363,9 @@ function drawBattle() {
   ctx.font = '12px monospace'; ctx.fillText('Lv' + enemy.level, 130, 42);
   ctx.fillStyle = '#FF0000'; ctx.fillRect(20, 50, 80, 8); ctx.fillStyle = '#00AA00'; const enemyHpPercent = Math.max(0, enemy.currentHp / enemy.maxHp); ctx.fillRect(20, 50, 80 * enemyHpPercent, 8);
 
-  // Player
+  // Player sprite - Draw real image if loaded
   const playerSprite = spriteCache[player.id];
-  if (playerSprite && playerSprite instanceof HTMLImageElement && playerSprite.complete && playerSprite.naturalWidth) {
+  if (playerSprite && playerSprite.src && playerSprite.naturalWidth > 0) {
     try { ctx.drawImage(playerSprite, 40, 185, 80, 80); } catch (e) { console.warn('drawImage player error', e, player.id); ctx.fillStyle = player.color; ctx.fillRect(60, 205, 60, 60); }
   } else { ctx.fillStyle = player.color; ctx.fillRect(60, 205, 60, 60); }
 
