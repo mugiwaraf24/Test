@@ -32,19 +32,15 @@ const pokemonBase = [
   { id: 102, name: 'Exeggcute', type: 'grass', hp: 60, atk: 40, def: 80, spa: 60, spd: 85, spe: 40, catchRate: 190, color: '#A8B820' }
 ];
 
-// Use PokeAPI raw.githubusercontent links to avoid jsDelivr package limit
-const spriteUrls = {
-  1:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1.png',
-  4:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/4.png',
-  7:   'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/7.png',
-  25:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png',
-  58:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/58.png',
-  63:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/63.png',
-  69:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/69.png',
-  133: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/133.png',
-  95:  'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/95.png',
-  102: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/102.png'
-};
+// Build inline SVG data URLs for guaranteed local sprites (avoids CORS/remote failures)
+const spriteUrls = {};
+(function buildInlineSprites() {
+  pokemonBase.forEach(p => {
+    const name = (p.name || ('#' + p.id)).substring(0, 12);
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='80' height='80' fill='${p.color || '#777'}'/><text x='40' y='45' font-size='10' fill='white' text-anchor='middle' font-family='monospace'>${name}</text></svg>`;
+    spriteUrls[p.id] = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+})();
 
 const spriteCache = {};
 
@@ -67,9 +63,19 @@ async function fetchImageAsObject(url) {
   }
 }
 
-// Load sprite with fallback: try fetch->objectURL first (more reliable for CORS), then try Image tag, then placeholder.
+// Load sprite with fallback: for data: URLs load via Image, otherwise try fetch->objectURL first then Image
 async function tryLoadSprite(url) {
   try {
+    if (typeof url === 'string' && url.startsWith('data:')) {
+      // data URLs: load via Image directly
+      const img = new Image();
+      return await new Promise((resolve) => {
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = url;
+      });
+    }
+
     // First attempt: fetch the resource and load via object URL (ensures drawable image even if remote server doesn't set CORS for image draws)
     const fetched = await fetchImageAsObject(url);
     if (fetched && (fetched.naturalWidth || fetched.width)) return fetched;
@@ -115,11 +121,11 @@ function loadSpriteImage(id) {
   if (spriteCache[id]) return spriteCache[id] === 'loading' ? null : spriteCache[id];
 
   spriteCache[id] = 'loading';
-  // Use the more reliable loader (fetch->objectURL preferred)
+  // Use the reliable loader (data URLs are local and will load quickly)
   tryLoadSprite(spriteUrls[id]).then(async (img) => {
     if (img && (img.naturalWidth || img.width)) {
       spriteCache[id] = img;
-      console.log('Sprite loaded', id, spriteUrls[id]);
+      console.log('Sprite loaded', id, spriteUrls[id].slice(0,80));
     } else {
       console.warn('Sprite failed to load (all fallbacks):', id, spriteUrls[id], '- using inline placeholder');
       const ph = createPlaceholderImage(id);
