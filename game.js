@@ -32,15 +32,19 @@ const pokemonBase = [
   { id: 102, name: 'Exeggcute', type: 'grass', hp: 60, atk: 40, def: 80, spa: 60, spd: 85, spe: 40, catchRate: 190, color: '#A8B820' }
 ];
 
-// Build inline SVG data URLs for guaranteed local sprites (avoids CORS/remote failures)
-const spriteUrls = {};
-(function buildInlineSprites() {
-  pokemonBase.forEach(p => {
-    const name = (p.name || ('#' + p.id)).substring(0, 12);
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='80' height='80' fill='${p.color || '#777'}'/><text x='40' y='45' font-size='10' fill='white' text-anchor='middle' font-family='monospace'>${name}</text></svg>`;
-    spriteUrls[p.id] = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-  });
-})();
+// Use local SVG files in assets/sprites/ so images always load from the repo (no CORS/network dependency)
+const spriteUrls = {
+  1:  'assets/sprites/1.svg',
+  4:  'assets/sprites/4.svg',
+  7:  'assets/sprites/7.svg',
+  25: 'assets/sprites/25.svg',
+  58: 'assets/sprites/58.svg',
+  63: 'assets/sprites/63.svg',
+  69: 'assets/sprites/69.svg',
+  133:'assets/sprites/133.svg',
+  95: 'assets/sprites/95.svg',
+  102:'assets/sprites/102.svg'
+};
 
 const spriteCache = {};
 
@@ -63,19 +67,9 @@ async function fetchImageAsObject(url) {
   }
 }
 
-// Load sprite with fallback: for data: URLs load via Image, otherwise try fetch->objectURL first then Image
+// Load sprite with fallback: try fetch->objectURL first (more reliable for CORS), then try Image tag, then placeholder.
 async function tryLoadSprite(url) {
   try {
-    if (typeof url === 'string' && url.startsWith('data:')) {
-      // data URLs: load via Image directly
-      const img = new Image();
-      return await new Promise((resolve) => {
-        img.onload = () => resolve(img);
-        img.onerror = () => resolve(null);
-        img.src = url;
-      });
-    }
-
     // First attempt: fetch the resource and load via object URL (ensures drawable image even if remote server doesn't set CORS for image draws)
     const fetched = await fetchImageAsObject(url);
     if (fetched && (fetched.naturalWidth || fetched.width)) return fetched;
@@ -121,13 +115,13 @@ function loadSpriteImage(id) {
   if (spriteCache[id]) return spriteCache[id] === 'loading' ? null : spriteCache[id];
 
   spriteCache[id] = 'loading';
-  // Use the reliable loader (data URLs are local and will load quickly)
+  // First try the local file via fetch->objectURL, then fall back to other methods
   tryLoadSprite(spriteUrls[id]).then(async (img) => {
     if (img && (img.naturalWidth || img.width)) {
       spriteCache[id] = img;
-      console.log('Sprite loaded', id, spriteUrls[id].slice(0,80));
+      console.log('Sprite loaded', id, spriteUrls[id]);
     } else {
-      console.warn('Sprite failed to load (all fallbacks):', id, spriteUrls[id], '- using inline placeholder');
+      console.warn('Sprite failed initial load, using placeholder', id, spriteUrls[id]);
       const ph = createPlaceholderImage(id);
       spriteCache[id] = ph;
     }
