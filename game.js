@@ -52,7 +52,21 @@ function loadSpriteImage(id) {
     if (!spriteCache[id]) {
         const img = new Image();
         img.src = spriteUrls[id];
-        img.crossOrigin = 'anonymous';
+        // Avoid setting crossOrigin because some hosts (raw.githubusercontent) may not send the CORS headers
+        // and that can prevent the image from loading when crossOrigin is set.
+        img.onload = () => {
+            // Redraw whichever screen is active so the newly loaded sprite appears
+            try {
+                if (gameState && gameState.gameMode === 'battle') {
+                    drawBattle();
+                } else {
+                    drawExploration();
+                }
+            } catch (e) {
+                // If draw functions aren't ready yet, ignore
+            }
+        };
+        img.onerror = (e) => console.warn('Failed to load sprite', id, spriteUrls[id], e);
         spriteCache[id] = img;
     }
     return spriteCache[id];
