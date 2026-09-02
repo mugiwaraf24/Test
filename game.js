@@ -118,10 +118,14 @@ function waitForFirebase() {
         const check = setInterval(() => {
             if (window.auth && window.db && window.createUserWithEmailAndPassword) {
                 clearInterval(check);
-                resolve();
+                resolve(true);
             }
             attempts++;
-            if (attempts > 50) clearInterval(check);
+            if (attempts > 50) {
+                clearInterval(check);
+                console.warn('Firebase not available after timeout, continuing without it.');
+                resolve(false);
+            }
         }, 100);
     });
 }
@@ -308,20 +312,24 @@ function drawPlayerSprite(x, y) {
     ctx.fillRect(x + 8, y + 20, 4, 8);
 }
 
+let controlsInitialized = false;
 function setupGameControls() {
-    dpadUp.onclick = () => gameState.inBattle ? null : showError('D-Pad Up');
-    dpadDown.onclick = () => gameState.inBattle ? null : showError('D-Pad Down');
-    dpadLeft.onclick = () => gameState.inBattle ? null : showError('D-Pad Left');
-    dpadRight.onclick = () => gameState.inBattle ? null : showError('D-Pad Right');
-    
-    btnA.onclick = () => handleButtonA();
-    btnB.onclick = () => handleButtonB();
-    btnX.onclick = () => handleButtonX();
-    btnY.onclick = () => handleButtonY();
-    
-    selectBtn.onclick = () => showItems();
-    startBtn.onclick = () => openMainMenu();
-    
+    if (controlsInitialized) return;
+    controlsInitialized = true;
+
+    dpadUp.addEventListener('click', () => { if (!gameState.inBattle) showError('D-Pad Up'); });
+    dpadDown.addEventListener('click', () => { if (!gameState.inBattle) showError('D-Pad Down'); });
+    dpadLeft.addEventListener('click', () => { if (!gameState.inBattle) showError('D-Pad Left'); });
+    dpadRight.addEventListener('click', () => { if (!gameState.inBattle) showError('D-Pad Right'); });
+
+    btnA.addEventListener('click', handleButtonA);
+    btnB.addEventListener('click', handleButtonB);
+    btnX.addEventListener('click', handleButtonX);
+    btnY.addEventListener('click', handleButtonY);
+
+    selectBtn.addEventListener('click', showItems);
+    startBtn.addEventListener('click', openMainMenu);
+
     document.addEventListener('keydown', handleKeyPress);
 }
 
@@ -575,7 +583,7 @@ function playerAttack() {
 function calculateDamage(attacker, defender) {
     const baseDamage = Math.max(1, attacker.atk - (defender.def / 2));
     const variance = 0.85 + Math.random() * 0.3;
-    const typeAdvantage = TYPES[attacker.type].strong.includes(defender.type) ? 1.5 : (TYPES[defender.type].weak.includes(attacker.type) ? 0.75 : 1);
+    const typeAdvantage = (TYPES[attacker.type] && TYPES[attacker.type].strong.includes(defender.type)) ? 1.5 : ((TYPES[defender.type] && TYPES[defender.type].weak.includes(attacker.type)) ? 0.75 : 1);
     
     return Math.max(1, Math.floor((baseDamage * variance * typeAdvantage) / 10) + 1);
 }
